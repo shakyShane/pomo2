@@ -1,10 +1,9 @@
-import {html, css, LitElement, PropertyValues} from 'lit'
-import { Command } from '@tauri-apps/api/shell'
+import { html, css, LitElement } from 'lit'
 import { customElement, property, state } from 'lit/decorators.js'
-import {invokeShortcut, listShortcuts} from "./services/macos-shortcuts";
+import { listShortcuts } from "./services/macos-shortcuts";
 import {listen, emit} from "@tauri-apps/api/event";
 import { invoke } from '@tauri-apps/api/tauri';
-import { appWindow } from "@tauri-apps/api/window";
+import {Status} from "./types";
 
 /**
  * An example element.
@@ -30,6 +29,9 @@ export class MyElement extends LitElement {
   remaining: number = 0;
 
   @state()
+  elapsed: number = 0;
+
+  @state()
   state: "running" | "ended" | "ended-prematurely" | "idle" = "idle";
 
   /**
@@ -44,6 +46,9 @@ export class MyElement extends LitElement {
   @property({ type: Number })
   count = 0
 
+
+  unlisten: (()=>void) | null = null;
+
   async _playpause(event) {
     const shortcuts = await listShortcuts();
     this.shortcuts = shortcuts
@@ -51,31 +56,37 @@ export class MyElement extends LitElement {
 
   async invoke() {
     // const lines = await invokeShortcut()
-    console.log('starting...');
+    let invokedTime = new Date().getTime();
+    console.log('starting at ', invokedTime);
 
     if (this.unlisten) {
       this.unlisten.call(null)
     }
-    this.unlisten = await listen<{kind:string}>('status', event => {
-      console.log(event.payload);
-      switch (event.payload.kind) {
+    this.unlisten = await listen<{kind:string, payload?: any}>('status', incoming => {
+      console.log(incoming.payload);
+      const event = Status.parse(incoming.payload);
+      switch (event.kind) {
         case "Start": {
+          this.remaining = event.rem;
+          this.elapsed = event.elapsed;
           this.state = 'running';
           break;
         }
         case "Tick": {
-          this.remaining = event.payload.time;
+          this.remaining = event.rem;
+          this.elapsed = event.elapsed;
           break;
         }
         case "End": {
-          if (event.payload.result === "Ended") {
+          if (event.result.kind === "Ended") {
+            console.log('ended correctly at ', new Date().getTime())
             this.remaining = 0;
             this.state = "ended"
-            console.log('ended correctly!')
           }
-          if (event.payload.result === "EndedPrematurely") {
+          if (event.result.kind === "EndedPrematurely") {
               this.state = "ended-prematurely";
           }
+          console.log('ran for %dms', new Date().getTime() - invokedTime)
           break
         }
         default: {
@@ -97,6 +108,14 @@ export class MyElement extends LitElement {
     await emit("plz-pause").catch(e => console.error(e));
   }
 
+  get runner() {
+    return html`<button @click=${() => this.stop()}>STOP</button>`
+  }
+
+  get status() {
+    return html`<pre><code>${JSON.stringify({remaining: this.remaining, elapsed: this.elapsed, state: this.state}, null, 2)}</code></pre>`
+  }
+
   render() {
     return html`
       <button @click=${this._playpause}>
@@ -106,8 +125,7 @@ export class MyElement extends LitElement {
           <ul>${this.shortcuts.map(sc => html`
               <li>
                   ${sc} <button @click=${()=>this.invoke(sc)}>Invoke</button>
-                  <span><em>${this.state} ${this.remaining}</em></span>
-                  ${this.state === "running" ? html`<button @click=${() => this.stop()}>STOP</button>` : null}
+                  ${this.state === "running" ? [this.status, this.runner] : null}
                   ${this.state === "ended-prematurely" ? html`<button @click=${() => this.resume()}>Resume</button>` : null}
               </li>
           `)}</ul>

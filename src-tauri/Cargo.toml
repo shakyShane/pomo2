@@ -16,13 +16,21 @@ tauri-build = { version = "1.0.0", features = [] }
 
 [dependencies]
 serde_json = "1.0"
-serde = { version = "1.0", features = ["derive"] }
+serde = { version = "1.0.139", features = ["derive"] }
 tauri = { version = "1.0.0", features = ["api-all"] }
 chrono = "0.4.19"
 crossbeam = "0.8.1"
 tokio = { version = "1.19.2", features = ["full"] }
 futures = "0.3.21"
+serde_zod = { git = "https://github.com/shakyShane/serde-zod.git" }
 
+[[bin]]
+name = "typegen"
+path = "src/typegen.rs"
+
+[[bin]]
+name = "app"
+path = "src/main.rs"
 
 [features]
 # by default Tauri runs in production mode
